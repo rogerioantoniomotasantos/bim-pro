@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package bim.geometry;
+
+// Geometry Service - High-performance IFC processing
+service GeometryService {
+  // Process IFC file and generate LOD meshes
+  rpc ProcessIFC(ProcessRequest) returns (stream ProcessResponse);
+  
+  // Get specific LOD for object
+  rpc GetObjectLOD(ObjectLODRequest) returns (ObjectLODResponse);
+  
+  // Generate spatial tiles for streaming
+  rpc GenerateTiles(TileRequest) returns (stream TileResponse);
+  
+  // Health check
+  rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}
+
+// Process IFC file request
+message ProcessRequest {
+  string file_path = 1;
+  string output_path = 2;
+  repeated int32 lod_levels = 3;  // [0, 1, 2] = LOD levels to generate
+  bool generate_tiles = 4;         // Generate spatial tiles
+  int32 max_tile_size_mb = 5;     // Max tile size for streaming
+}
+
+// Processing progress response (streamed)
+message ProcessResponse {
+  enum Status {
+    STARTED = 0;
+    READING_IFC = 1;
+    EXTRACTING_GEOMETRY = 2;
+    GENERATING_LOD = 3;
+    OPTIMIZING_MESH = 4;
+    GENERATING_TILES = 5;
+    WRITING_OUTPUT = 6;
+    COMPLETED = 7;
+    FAILED = 8;
+  }
+  
+  Status status = 1;
+  float progress = 2;           // 0.0 to 1.0
+  string message = 3;
+  int32 objects_processed = 4;
+  int32 total_objects = 5;
+  
+  // On completion
+  ProcessResult result = 6;
+}
+
+message ProcessResult {
+  string output_file = 1;
+  int64 file_size_bytes = 2;
+  int32 total_objects = 3;
+  int32 total_vertices = 4;
+  int32 total_triangles = 5;
+  repeated LODStats lod_stats = 6;
+  float processing_time_seconds = 7;
+}
+
+message LODStats {
+  int32 lod_level = 1;
+  int32 vertices = 2;
+  int32 triangles = 3;
+  int64 size_bytes = 4;
+}
+
+// Request specific LOD for object
+message ObjectLODRequest {
+  string project_id = 1;
+  string object_guid = 2;
+  int32 lod_level = 3;  // 0, 1, or 2
+}
+
+message ObjectLODResponse {
+  bytes mesh_data = 1;      // Binary mesh data
+  BoundingBox bbox = 2;
+  MaterialInfo material = 3;
+  ObjectMetadata metadata = 4;
+}
+
+// Tile generation request
+message TileRequest {
+  string project_id = 1;
+  int32 max_depth = 2;           // Octree depth
+  float tile_size_meters = 3;    // Target tile size
+}
+
+message TileResponse {
+  string tile_id = 1;
+  int32 depth_level = 2;
+  BoundingBox bbox = 3;
+  int32 object_count = 4;
+  repeated string object_guids = 5;
+  bytes tile_data = 6;  // Binary tile data
+}
+
+// Data structures
+message BoundingBox {
+  Vector3 min = 1;
+  Vector3 max = 2;
+  Vector3 center = 3;
+  float radius = 4;
+}
+
+message Vector3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message MaterialInfo {
+  string name = 1;
+  Vector3 diffuse_color = 2;
+  float opacity = 3;
+  float metallic = 4;
+  float roughness = 5;
+}
+
+message ObjectMetadata {
+  string guid = 1;
+  string ifc_type = 2;
+  string name = 3;
+  map<string, string> properties = 4;
+}
+
+// Health check
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+  int32 active_jobs = 3;
+  float cpu_usage = 4;
+  float memory_usage_mb = 5;
+}

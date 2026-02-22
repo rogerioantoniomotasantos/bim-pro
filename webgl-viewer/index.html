@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIM Viewer - Professional</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+        
+        #viewport {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            cursor: grab;
+        }
+        
+        #viewport:active {
+            cursor: grabbing;
+        }
+        
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #0052a3;
+        }
+        
+        .stat-item {
+            margin: 5px 0;
+        }
+        
+        .stat-label {
+            color: #888;
+        }
+        
+        .stat-value {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="viewport"></canvas>
+    
+    <div id="stats">
+        <div class="stat-item">
+            <span class="stat-label">FPS:</span>
+            <span class="stat-value" id="fps">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Frame Time:</span>
+            <span class="stat-value" id="frameTime">0</span>ms
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Visible Objects:</span>
+            <span class="stat-value" id="visibleObjects">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Draw Calls:</span>
+            <span class="stat-value" id="drawCalls">0</span>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <h3>🏗️ BIM Viewer</h3>
+        <button onclick="loadTestModel()">Load Test Model</button>
+        <button onclick="resetCamera()">Reset Camera</button>
+        <input type="file" id="fileInput" accept=".ifc,.bimg" style="display:none" onchange="handleFileLoad(event)">
+        <button onclick="document.getElementById('fileInput').click()">Load IFC File</button>
+    </div>
+    
+    <!-- Math library (gl-matrix) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/3.4.3/gl-matrix-min.js"></script>
+    
+    <!-- Extract vec3, vec4, mat4 from glMatrix -->
+    <script>
+        const { vec3, vec4, mat4 } = glMatrix;
+    </script>
+    
+    <!-- Shaders -->
+    <script src="shaders/shaders.js"></script>
+    
+    <!-- Core components -->
+    <script src="src/camera.js"></script>
+    <script src="src/scene.js"></script>
+    <script src="src/renderer.js"></script>
+    <script src="src/shader_manager.js"></script>
+    <script src="src/model_loader.js"></script>
+    <script src="src/viewer.js"></script>
+    
+    <script>
+        let viewer;
+        
+        async function init() {
+            console.log('🚀 Initializing BIM Viewer...');
+            
+            viewer = new BIMViewer('viewport');
+            viewer.start();
+            
+            // Update stats every 100ms
+            setInterval(updateStats, 100);
+            
+            console.log('✅ Viewer ready');
+        }
+        
+        function updateStats() {
+            if (!viewer) return;
+            
+            document.getElementById('fps').textContent = Math.round(viewer.stats.fps);
+            document.getElementById('frameTime').textContent = viewer.stats.frameTime.toFixed(2);
+            document.getElementById('visibleObjects').textContent = viewer.stats.visibleObjects;
+            document.getElementById('drawCalls').textContent = viewer.renderer.drawCalls;
+        }
+        
+        async function loadTestModel() {
+            // Create a simple test cube
+            const vertices = new Float32Array([
+                -1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1,
+                -1,-1,1, 1,-1,1, 1,1,1, -1,1,1
+            ]);
+            
+            const indices = new Uint32Array([
+                0,1,2, 0,2,3, 4,6,5, 4,7,6,
+                0,5,1, 0,4,5, 2,7,3, 2,6,7,
+                0,3,7, 0,7,4, 1,6,2, 1,5,6
+            ]);
+            
+            // Create binary format
+            const buffer = new ArrayBuffer(1024);
+            const view = new DataView(buffer);
+            let offset = 0;
+            
+            // Header
+            view.setUint8(offset++, 'B'.charCodeAt(0));
+            view.setUint8(offset++, 'I'.charCodeAt(0));
+            view.setUint8(offset++, 'M'.charCodeAt(0));
+            view.setUint8(offset++, 'G'.charCodeAt(0));
+            view.setUint32(offset, 1, true); offset += 4;  // version
+            view.setUint32(offset, 1, true); offset += 4;  // mesh count
+            view.setUint32(offset, 3, true); offset += 4;  // lod count
+            offset += 12; // Skip LOD levels
+            
+            // Mesh data
+            view.setUint32(offset, 8, true); offset += 4;  // vertex count
+            view.setUint32(offset, 12, true); offset += 4; // triangle count
+            
+            console.log('📦 Loading test model...');
+            await viewer.loadModel(buffer);
+            console.log('✅ Test model loaded');
+        }
+        
+        async function handleFileLoad(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Verificar se viewer está inicializado
+            if (!viewer) {
+                alert('Viewer não está pronto. Aguarde a inicialização.');
+                return;
+            }
+            
+            const fileName = file.name.toLowerCase();
+            
+            // Detectar URL da API automaticamente
+            const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? `http://${window.location.hostname}:8080`
+                : `http://${window.location.hostname}:8000`;
+            
+            // Se for arquivo .bimg, carregar diretamente
+            if (fileName.endsWith('.bimg')) {
+                console.log(`📥 Loading .bimg file: ${file.name}`);
+                const buffer = await file.arrayBuffer();
+                
+                try {
+                    await viewer.loadModel(buffer);
+                } catch (error) {
+                    console.error('Error loading .bimg:', error);
+                    alert('Erro ao carregar arquivo .bimg: ' + error.message);
+                }
+                return;
+            }
+            
+            // Se for arquivo .ifc, fazer upload e conversão
+            if (fileName.endsWith('.ifc')) {
+                console.log(`📤 Uploading IFC file: ${file.name}`);
+                console.log(`🔌 API endpoint: ${API_BASE}`);
+                
+                // Mostrar loading
+                const statusDiv = document.createElement('div');
+                statusDiv.id = 'upload-status';
+                statusDiv.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);padding:30px;border-radius:10px;color:white;text-align:center;z-index:1000;min-width:300px;';
+                statusDiv.innerHTML = '<h2>⏳ Processing IFC...</h2><p id="status-text">Uploading file...</p>';
+                document.body.appendChild(statusDiv);
+                
+                try {
+                    // Upload para API
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    const uploadResponse = await fetch(`${API_BASE}/api/convert`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!uploadResponse.ok) {
+                        throw new Error(`Upload failed: ${uploadResponse.status}`);
+                    }
+                    
+                    const result = await uploadResponse.json();
+                    console.log('✅ Upload result:', result);
+                    
+                    document.getElementById('status-text').textContent = 'Converting to 3D format...';
+                    
+                    // Aguardar conversão (demo retorna imediatamente)
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // Baixar arquivo convertido
+                    document.getElementById('status-text').textContent = 'Loading 3D model...';
+                    
+                    const downloadResponse = await fetch(`${API_BASE}/api/download/${result.task_id}`);
+                    
+                    if (!downloadResponse.ok) {
+                        throw new Error(`Download failed: ${downloadResponse.status}`);
+                    }
+                    
+                    const modelBuffer = await downloadResponse.arrayBuffer();
+                    console.log(`📦 Downloaded ${modelBuffer.byteLength} bytes`);
+                    
+                    // Carregar no viewer
+                    if (viewer && typeof viewer.loadModel === 'function') {
+                        await viewer.loadModel(modelBuffer);
+                    } else {
+                        throw new Error('Viewer not ready');
+                    }
+                    
+                    // Remover loading
+                    document.body.removeChild(statusDiv);
+                    
+                    console.log('✅ IFC loaded and rendered successfully!');
+                    
+                } catch (error) {
+                    console.error('❌ Error processing IFC:', error);
+                    const statusText = document.getElementById('status-text');
+                    if (statusText) {
+                        statusText.innerHTML = `
+                            <h3 style="color:#ff4444">❌ Error</h3>
+                            <p>${error.message}</p>
+                            <p style="font-size:12px;margin-top:10px;color:#888;">
+                                <strong>Note:</strong> This is a demo version.<br>
+                                The .bimg file is created but contains minimal data.<br>
+                                For full IFC processing, compile the C++ geometry server.
+                            </p>
+                            <button onclick="document.body.removeChild(document.getElementById('upload-status'))" style="margin-top:15px;padding:10px 20px;background:#0066cc;color:white;border:none;border-radius:4px;cursor:pointer;">Close</button>
+                        `;
+                    }
+                }
+                
+                return;
+            }
+            
+            alert('Please select a .ifc or .bimg file');
+        }
+        
+        function resetCamera() {
+            viewer.camera.azimuth = 45 * Math.PI / 180;
+            viewer.camera.elevation = 30 * Math.PI / 180;
+            viewer.camera.distance = 20;
+        }
+        
+        // Initialize on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+services:
+  # Geometry Server (Python + IfcOpenShell)
+  geometry-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.geometry-server
+    container_name: bim-geometry-server
+    ports:
+      - "50051:50051"
+    volumes:
+      - upload-data:/tmp/uploads
+      - output-data:/tmp/outputs
+    restart: unless-stopped
+  
+  # FastAPI Bridge
+  api-bridge:
+    build:
+      context: fastapi-bridge
+    container_name: bim-api-bridge
+    ports:
+      - "8080:8000"
+    environment:
+      - GEOMETRY_SERVER_URL=geometry-server:50051
+    depends_on:
+      - geometry-server
+    volumes:
+      - upload-data:/tmp/uploads
+      - output-data:/tmp/outputs
+    restart: unless-stopped
+  
+  # WebGL Viewer
+  viewer:
+    image: nginx:alpine
+    container_name: bim-viewer
+    ports:
+      - "80:80"
+    volumes:
+      - ./webgl-viewer:/usr/share/nginx/html:ro
+    depends_on:
+      - api-bridge
+    restart: unless-stopped
+
+volumes:
+  upload-data:
+  output-data:
+
+networks:
+  default:
+    name: bim-network

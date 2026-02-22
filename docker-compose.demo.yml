@@ -1,0 +1,32 @@
+services:
+  # FastAPI Bridge (Demo - no gRPC)
+  api-bridge:
+    build:
+      context: fastapi-bridge
+    container_name: bim-api-bridge
+    ports:
+      - "8000:8000"
+    volumes:
+      - upload-data:/tmp/uploads
+      - output-data:/tmp/outputs
+    restart: unless-stopped
+  
+  # WebGL Viewer (Nginx)
+  viewer:
+    image: nginx:alpine
+    container_name: bim-viewer
+    ports:
+      - "80:80"
+    volumes:
+      - ./webgl-viewer:/usr/share/nginx/html:ro
+    depends_on:
+      - api-bridge
+    restart: unless-stopped
+
+volumes:
+  upload-data:
+  output-data:
+
+networks:
+  default:
+    name: bim-network
